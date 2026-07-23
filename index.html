@@ -53,6 +53,7 @@ td{padding:6px 9px;border:1px solid #dfe4ea;background:#fff}
   <div class="tabs">
     <button id="tabV" class="on" onclick="tab('V')">① バリエーション</button>
     <button id="tabP" onclick="tab('P')">② 商品</button>
+    <button id="tabO" onclick="tab('O')">③ 仕入価格</button>
   </div>
   <div class="card" id="paneV">
     <h2>バリエーション（部品 × 純正品番 → 仕入価格）</h2>
@@ -86,16 +87,30 @@ td{padding:6px 9px;border:1px solid #dfe4ea;background:#fff}
     <div class="listhead"><b>登録済み一覧</b><input id="pFilter" placeholder="商品コード・型式で検索"></div>
     <table id="pList"></table>
   </div>
+  <div class="card" id="paneO" style="display:none">
+    <h2>仕入価格（仕入先 × 純正品番 → 価格）</h2>
+    <div class="editbar" id="oEditBar">編集中：<b id="oEditKey"></b>（仕入先・品番は変更できません）<button class="mini ghost" onclick="cancelEditO()">編集をやめる</button></div>
+    <label>仕入先</label><select id="supSel"></select>
+    <div class="grid">
+      <div><label>純正品番（Vの識別キーと同じ表記）</label><input id="oPn" placeholder="例）23100-28300"></div>
+      <div><label>仕入価格（円・税抜整数）</label><input id="oCost" type="number" min="0"></div>
+    </div>
+    <label>各社品番（任意｜仕入先の管理番号・分かる場合のみ）</label><input id="oRef">
+    <button id="oSaveBtn" onclick="saveO()">登録／価格更新する</button>
+    <div class="msg" id="oMsg"></div>
+    <div class="listhead"><b>オファー一覧（<span style="background:#faeeda;padding:1px 6px">90日超</span>／<span style="background:#fcebeb;padding:1px 6px">180日超</span>）</b><input id="oFilter" placeholder="純正品番・各社品番で検索"></div>
+    <table id="oList"></table>
+  </div>
 </div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 const sb = supabase.createClient('https://mmdindajwedeaseadrnq.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1tZGluZGFqd2VkZWFzZWFkcm5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NjI2MjQsImV4cCI6MjEwMDIzODYyNH0.dFUKT7_THvQsdSSTROQQ9R8HBP_HLusME262X3YD3-g');
-let pickedV=null, pickedCar=null, editV=null, editP=null;
-const vRows={}, pRows={};
+let pickedV=null, pickedCar=null, editV=null, editP=null, editO=null;
+const vRows={}, pRows={}, oRows={};
 function show(id,cls,text){const e=document.getElementById(id);e.className='msg '+cls;e.style.display='block';e.textContent=text}
-function tab(t){paneV.style.display=t==='V'?'':'none';paneP.style.display=t==='P'?'':'none';
-tabV.className=t==='V'?'on':'';tabP.className=t==='P'?'on':''}
+function tab(t){paneV.style.display=t==='V'?'':'none';paneP.style.display=t==='P'?'':'none';paneO.style.display=t==='O'?'':'none';
+tabV.className=t==='V'?'on':'';tabP.className=t==='P'?'on':'';tabO.className=t==='O'?'on':''}
 async function login(){
   const {data,error}=await sb.auth.signInWithPassword({email:email.value.trim(),password:pass.value});
   if(error){show('loginMsg','ng','ログイン失敗：'+error.message);return}
@@ -105,7 +120,55 @@ async function init(user){
   loginCard.style.display='none';app.style.display='';uinfo.textContent=user.email;
   const {data:parts}=await sb.from('parts_master').select('部品コード,部品名,種別').order('部品コード');
   partSel.innerHTML=parts.map(p=>`<option value="${p.部品コード}">${p.部品コード}｜${p.部品名}（${p.種別}）</option>`).join('');
-  refreshV(); refreshP();
+  const {data:sups}=await sb.from('suppliers').select('supplier_code').order('supplier_code');
+  supSel.innerHTML=(sups||[]).map(s=>`<option value="${s.supplier_code}">${s.supplier_code}</option>`).join('');
+  refreshV(); refreshP(); refreshO();
+}
+async function refreshO(){
+  const q=oFilter.value.trim();
+  let query=sb.from('supplier_offers').select('supplier_code,純正品番,各社品番,仕入価格,価格確認日');
+  if(q) query=query.or(`純正品番.ilike.%${q}%,各社品番.ilike.%${q}%,supplier_code.ilike.%${q}%`);
+  const {data}=await query.order('価格確認日',{ascending:false}).limit(15);
+  oList.innerHTML='<tr><th>仕入先</th><th>純正品番</th><th>各社品番</th><th>仕入価格</th><th>価格確認日</th><th>操作</th></tr>'+
+   (data||[]).map(o=>{const k=o.supplier_code+'||'+o.純正品番; oRows[k]=o;
+     const d=o.価格確認日?new Date(o.価格確認日):null;
+     const days=d?Math.floor((Date.now()-d.getTime())/864e5):null;
+     const st=days==null?'':days>180?'background:#fcebeb;color:#791f1f':days>90?'background:#faeeda;color:#854f0b':'';
+     const ds=d?d.toISOString().slice(0,10)+'（'+days+'日前）':'';
+     const kq=k.replace(/'/g,"&#39;");
+     return `<tr><td>${o.supplier_code}</td><td>${o.純正品番}</td><td>${o.各社品番||''}</td><td>${o.仕入価格.toLocaleString()}</td><td style="${st}">${ds}</td><td><button class="mini ghost" onclick="startEditO('${kq}')">編集</button><button class="mini danger" onclick="delO('${kq}')">削除</button></td></tr>`}).join('');
+}
+function startEditO(k){
+  const o=oRows[k]; editO=o;
+  supSel.value=o.supplier_code; supSel.disabled=true;
+  oPn.value=o.純正品番; oPn.disabled=true;
+  oCost.value=o.仕入価格; oRef.value=o.各社品番||'';
+  oEditKey.textContent=o.supplier_code+' × '+o.純正品番; oEditBar.style.display='block'; oSaveBtn.textContent='価格を更新する';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEditO(){editO=null;supSel.disabled=false;oPn.disabled=false;oPn.value='';oCost.value='';oRef.value='';oEditBar.style.display='none';oSaveBtn.textContent='登録／価格更新する'}
+async function saveO(){
+  if(!oPn.value.trim()){show('oMsg','ng','純正品番を入力してください');return}
+  if(!oCost.value){show('oMsg','ng','仕入価格を入力してください');return}
+  if(editO){
+    const {error}=await sb.from('supplier_offers').update({'仕入価格':parseInt(oCost.value),'各社品番':oRef.value.trim()||null})
+      .eq('supplier_code',editO.supplier_code).eq('純正品番',editO.純正品番);
+    if(error){show('oMsg','ng','エラー：'+error.message);return}
+    show('oMsg','ok','価格を更新しました（確認日も更新）'); cancelEditO(); refreshO(); return;
+  }
+  const row={supplier_code:supSel.value,'純正品番':oPn.value.trim(),'仕入価格':parseInt(oCost.value)};
+  if(oRef.value.trim()) row['各社品番']=oRef.value.trim();
+  const {error}=await sb.from('supplier_offers').upsert(row,{onConflict:'supplier_code,純正品番'});
+  if(error){show('oMsg','ng','エラー：'+error.message);return}
+  show('oMsg','ok','登録しました：'+row.supplier_code+' × '+row.純正品番);
+  oPn.value='';oCost.value='';oRef.value='';refreshO();
+}
+async function delO(k){
+  const o=oRows[k];
+  if(!confirm(o.supplier_code+' × '+o.純正品番+' を削除しますか？')) return;
+  const {error}=await sb.from('supplier_offers').delete().eq('supplier_code',o.supplier_code).eq('純正品番',o.純正品番);
+  if(error){show('oMsg','ng','エラー：'+error.message);return}
+  show('oMsg','ok','削除しました'); refreshO();
 }
 /* ===== バリエーション ===== */
 async function refreshV(){
@@ -226,5 +289,6 @@ async function refreshP(){
    (data||[]).map(p=>{pRows[p.商品コード]=p;return `<tr><td>${p.商品コード}</td><td>${p.car_models?p.car_models.maker+' '+p.car_models.model_name:''}</td><td>${p.参考型式||''}</td><td><button class="mini ghost" onclick="startEditP('${p.商品コード}')">編集</button><button class="mini danger" onclick="delP('${p.商品コード}')">削除</button></td></tr>`}).join('');
 }
 pFilter.addEventListener('input',()=>refreshP());
+oFilter.addEventListener('input',()=>refreshO());
 sb.auth.getSession().then(({data})=>{if(data.session)init(data.session.user)});
 </script></body></html>
