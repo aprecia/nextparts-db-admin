@@ -12,17 +12,21 @@ h2{font-size:15px;color:var(--navy);border-left:4px solid var(--navy);padding-le
 label{display:block;font-weight:bold;font-size:12.5px;color:var(--navy);margin:10px 0 4px}
 input,select{width:100%;padding:9px 10px;border:1px solid #c5cdd6;border-radius:6px;font-size:14px;background:#fff}
 input:focus,select:focus{outline:2px solid var(--bd)}
+input:disabled,select:disabled{background:#eee}
 button{background:var(--navy);color:#fff;border:none;border-radius:6px;padding:10px 22px;font-size:14px;font-weight:bold;cursor:pointer;margin-top:14px}
 button:hover{opacity:.9}button.ghost{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+button.mini{padding:4px 10px;font-size:12px;margin:0 2px}
+button.danger{background:#fff;color:#a32d2d;border:1px solid #e6b8b8}
 .tabs{display:flex;gap:8px;margin-bottom:14px}
 .tabs button{margin:0;background:#fff;color:var(--navy);border:1px solid var(--bd)}
 .tabs button.on{background:var(--navy);color:#fff}
 .msg{padding:10px 12px;border-radius:6px;margin-top:12px;font-size:13.5px;display:none}
 .ok{background:#e1f5ee;color:#085041;border:1px solid #9fe1cb}
 .ng{background:#fcebeb;color:#791f1f;border:1px solid #f7c1c1}
-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+.editbar{background:#fff6e6;border:1px solid #ecc37a;border-radius:6px;padding:8px 12px;margin-top:10px;display:none;font-size:13px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
 th{background:#eef2f7;color:var(--navy);text-align:left;padding:7px 9px;border:1px solid #dfe4ea;white-space:nowrap}
-td{padding:7px 9px;border:1px solid #dfe4ea;background:#fff}
+td{padding:6px 9px;border:1px solid #dfe4ea;background:#fff}
 .sug{position:relative}
 .sug ul{position:absolute;z-index:9;left:0;right:0;top:100%;background:#fff;border:1px solid #c5cdd6;border-radius:0 0 6px 6px;list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;display:none}
 .sug li{padding:8px 10px;cursor:pointer;border-bottom:1px solid #f0f0f0}
@@ -32,6 +36,9 @@ td{padding:7px 9px;border:1px solid #dfe4ea;background:#fff}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
 @media(max-width:640px){.grid{grid-template-columns:1fr}}
 .badge{display:inline-block;background:var(--navy);color:#fff;border-radius:12px;padding:2px 10px;font-size:12px}
+.listhead{display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px}
+.listhead b{color:var(--navy);font-size:13px;white-space:nowrap}
+.listhead input{max-width:260px;padding:6px 9px;font-size:13px}
 </style></head><body>
 <header><b>NEXTPARTS 商品DB入力</b><span id="uinfo"></span></header>
 <main>
@@ -44,23 +51,26 @@ td{padding:7px 9px;border:1px solid #dfe4ea;background:#fff}
 </div>
 <div id="app" style="display:none">
   <div class="tabs">
-    <button id="tabV" class="on" onclick="tab('V')">① バリエーション登録</button>
-    <button id="tabP" onclick="tab('P')">② 商品登録</button>
+    <button id="tabV" class="on" onclick="tab('V')">① バリエーション</button>
+    <button id="tabP" onclick="tab('P')">② 商品</button>
   </div>
   <div class="card" id="paneV">
-    <h2>バリエーション登録（部品 × 純正品番 → 仕入価格）</h2>
+    <h2>バリエーション（部品 × 純正品番 → 仕入価格）</h2>
+    <div class="editbar" id="vEditBar">編集中：<b id="vEditCode"></b>（部品は変更できません）<button class="mini ghost" onclick="cancelEditV()">編集をやめる</button></div>
     <label>部品（部品マスタから選択）</label>
     <select id="partSel"></select>
     <div class="grid">
       <div><label>純正品番</label><input id="pn" placeholder="例）23100-28300"></div>
       <div><label>仕入価格（円・税抜整数）</label><input id="cost" type="number" min="0"></div>
     </div>
-    <button onclick="saveV()">登録する</button>
+    <button id="vSaveBtn" onclick="saveV()">登録する</button>
     <div class="msg" id="vMsg"></div>
-    <table id="vList"><tr><th>Vコード</th><th>部品</th><th>純正品番</th><th>仕入価格</th></tr></table>
+    <div class="listhead"><b>登録済み一覧</b><input id="vFilter" placeholder="Vコード・純正品番で検索"></div>
+    <table id="vList"></table>
   </div>
   <div class="card" id="paneP" style="display:none">
-    <h2>商品登録（バリエーション × 車名 × 型式）</h2>
+    <h2>商品（バリエーション × 車名 × 型式）</h2>
+    <div class="editbar" id="pEditBar">編集中：<b id="pEditCode"></b>（バリエーションは変更できません）<button class="mini ghost" onclick="cancelEditP()">編集をやめる</button></div>
     <label>バリエーション（部品名・純正品番で検索）</label>
     <div class="sug"><input id="vSearch" placeholder="例）オルタ / 23100" autocomplete="off"><ul id="vSug"></ul></div>
     <div id="vPicked" style="margin-top:6px"></div>
@@ -68,40 +78,58 @@ td{padding:7px 9px;border:1px solid #dfe4ea;background:#fff}
     <div class="sug"><input id="carSearch" placeholder="例）ぷり → プリウス" autocomplete="off"><ul id="carSug"></ul></div>
     <div id="carPicked" style="margin-top:6px"></div>
     <label>型式</label><input id="katashiki" placeholder="例）DAA-ZVW30">
-    <button onclick="saveP()">登録する</button>
+    <button id="pSaveBtn" onclick="saveP()">登録する</button>
     <div class="msg" id="pMsg"></div>
     <div class="pv" id="pv"></div>
-    <table id="pList"><tr><th>商品コード</th><th>車名</th><th>型式</th></tr></table>
+    <div class="listhead"><b>登録済み一覧</b><input id="pFilter" placeholder="商品コード・型式で検索"></div>
+    <table id="pList"></table>
   </div>
 </div>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 const sb = supabase.createClient('https://mmdindajwedeaseadrnq.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1tZGluZGFqd2VkZWFzZWFkcm5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NjI2MjQsImV4cCI6MjEwMDIzODYyNH0.dFUKT7_THvQsdSSTROQQ9R8HBP_HLusME262X3YD3-g');
-let pickedV=null, pickedCar=null;
+let pickedV=null, pickedCar=null, editV=null, editP=null;
+const vRows={}, pRows={};
 function show(id,cls,text){const e=document.getElementById(id);e.className='msg '+cls;e.style.display='block';e.textContent=text}
-function tab(t){document.getElementById('paneV').style.display=t==='V'?'':'none';document.getElementById('paneP').style.display=t==='P'?'':'none';
-document.getElementById('tabV').className=t==='V'?'on':'';document.getElementById('tabP').className=t==='P'?'on':''}
+function tab(t){paneV.style.display=t==='V'?'':'none';paneP.style.display=t==='P'?'':'none';
+tabV.className=t==='V'?'on':'';tabP.className=t==='P'?'on':''}
 async function login(){
   const {data,error}=await sb.auth.signInWithPassword({email:email.value.trim(),password:pass.value});
   if(error){show('loginMsg','ng','ログイン失敗：'+error.message);return}
   init(data.user);
 }
 async function init(user){
-  document.getElementById('loginCard').style.display='none';
-  document.getElementById('app').style.display='';
-  document.getElementById('uinfo').textContent=user.email;
+  loginCard.style.display='none';app.style.display='';uinfo.textContent=user.email;
   const {data:parts}=await sb.from('parts_master').select('部品コード,部品名,種別').order('部品コード');
   partSel.innerHTML=parts.map(p=>`<option value="${p.部品コード}">${p.部品コード}｜${p.部品名}（${p.種別}）</option>`).join('');
   refreshV(); refreshP();
 }
+/* ===== バリエーション ===== */
 async function refreshV(){
-  const {data}=await sb.from('variations').select('Vコード,部品コード,純正品番,仕入価格,parts_master(部品名)').order('created_at',{ascending:false}).limit(10);
-  vList.innerHTML='<tr><th>Vコード</th><th>部品</th><th>純正品番</th><th>仕入価格</th></tr>'+
-   (data||[]).map(v=>`<tr><td>${v.Vコード}</td><td>${v.parts_master?.部品名||v.部品コード}</td><td>${v.純正品番}</td><td>${(v.仕入価格??'').toLocaleString?v.仕入価格?.toLocaleString():''}</td></tr>`).join('');
+  const q=vFilter.value.trim();
+  let query=sb.from('variations').select('Vコード,部品コード,純正品番,仕入価格,parts_master(部品名)');
+  if(q) query=query.or(`Vコード.ilike.%${q}%,純正品番.ilike.%${q}%`);
+  const {data}=await query.order('created_at',{ascending:false}).limit(10);
+  vList.innerHTML='<tr><th>Vコード</th><th>部品</th><th>純正品番</th><th>仕入価格</th><th>操作</th></tr>'+
+   (data||[]).map(v=>{vRows[v.Vコード]=v;return `<tr><td>${v.Vコード}</td><td>${v.parts_master?.部品名||v.部品コード}</td><td>${v.純正品番}</td><td>${v.仕入価格!=null?v.仕入価格.toLocaleString():''}</td><td><button class="mini ghost" onclick="startEditV('${v.Vコード}')">編集</button><button class="mini danger" onclick="delV('${v.Vコード}')">削除</button></td></tr>`}).join('');
 }
+function startEditV(code){
+  const v=vRows[code]; editV=code;
+  partSel.value=v.部品コード; partSel.disabled=true;
+  pn.value=v.純正品番; cost.value=v.仕入価格??'';
+  vEditCode.textContent=code; vEditBar.style.display='block'; vSaveBtn.textContent='更新する';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEditV(){editV=null;partSel.disabled=false;pn.value='';cost.value='';vEditBar.style.display='none';vSaveBtn.textContent='登録する'}
 async function saveV(){
   if(!pn.value.trim()){show('vMsg','ng','純正品番を入力してください');return}
+  if(editV){
+    const upd={'純正品番':pn.value.trim(),'仕入価格':cost.value?parseInt(cost.value):null};
+    const {error}=await sb.from('variations').update(upd).eq('Vコード',editV);
+    if(error){show('vMsg','ng','エラー：'+error.message);return}
+    show('vMsg','ok','更新しました：'+editV); cancelEditV(); refreshV(); return;
+  }
   const row={'部品コード':partSel.value,'純正品番':pn.value.trim()};
   if(cost.value) row['仕入価格']=parseInt(cost.value);
   const {data,error}=await sb.from('variations').insert(row).select();
@@ -112,10 +140,22 @@ async function saveV(){
   show('vMsg','ok','登録しました → Vコード：'+data[0].Vコード);
   pn.value='';cost.value='';refreshV();
 }
+async function delV(code){
+  if(!confirm(code+' を削除しますか？')) return;
+  const {error}=await sb.from('variations').delete().eq('Vコード',code);
+  if(error){
+    if(String(error.message).includes('foreign key')||String(error.message).includes('violates')){
+      show('vMsg','ng',code+' には商品が紐づいているため削除できません（先に商品を削除してください）')}
+    else show('vMsg','ng','エラー：'+error.message);
+    return}
+  show('vMsg','ok',code+' を削除しました'); refreshV();
+}
+vFilter.addEventListener('input',()=>refreshV());
+/* ===== 商品 ===== */
 vSearch.addEventListener('input',async e=>{
   const q=e.target.value.trim(); if(q.length<2){vSug.style.display='none';return}
   const {data}=await sb.from('variations').select('Vコード,部品コード,純正品番,parts_master(部品名)')
-    .or(`純正品番.ilike.%${q}%,部品コード.ilike.%${q}%`).limit(8);
+    .or(`純正品番.ilike.%${q}%,部品コード.ilike.%${q}%,Vコード.ilike.%${q}%`).limit(8);
   let list=data||[];
   if(!list.length){
     const {data:d2}=await sb.from('variations').select('Vコード,部品コード,純正品番,parts_master!inner(部品名)').ilike('parts_master.部品名',`%${q}%`).limit(8);
@@ -135,23 +175,53 @@ carSearch.addEventListener('input',async e=>{
 });
 function pickCar(c){pickedCar=c;carSug.style.display='none';carSearch.value='';
   carPicked.innerHTML=`<span class="badge">${c.maker}</span> ${c.model_name}`}
+function startEditP(code){
+  const p=pRows[code]; editP=code;
+  pickedV=null; vSearch.disabled=true;
+  vPicked.innerHTML=`<span class="badge">${p.Vコード}</span>（変更不可）`;
+  pickedCar=p.car_models?{id:p.車種_id,maker:p.car_models.maker,model_name:p.car_models.model_name}:null;
+  carPicked.innerHTML=pickedCar?`<span class="badge">${pickedCar.maker}</span> ${pickedCar.model_name}`:'';
+  katashiki.value=p.参考型式||'';
+  pEditCode.textContent=code; pEditBar.style.display='block'; pSaveBtn.textContent='更新する';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEditP(){editP=null;vSearch.disabled=false;pickedV=null;pickedCar=null;vPicked.innerHTML='';carPicked.innerHTML='';katashiki.value='';pEditBar.style.display='none';pSaveBtn.textContent='登録する'}
 async function saveP(){
+  if(editP){
+    if(!pickedCar){show('pMsg','ng','車名を選択してください');return}
+    const {error}=await sb.from('products').update({'車種_id':pickedCar.id,'参考型式':katashiki.value.trim()||null}).eq('商品コード',editP);
+    if(error){show('pMsg','ng','エラー：'+error.message);return}
+    show('pMsg','ok','更新しました：'+editP); await showPreview(editP); cancelEditP(); refreshP(); return;
+  }
   if(!pickedV){show('pMsg','ng','バリエーションを選択してください');return}
   if(!pickedCar){show('pMsg','ng','車名を選択してください');return}
   const {data,error}=await sb.from('products').insert({'Vコード':pickedV.Vコード,'車種_id':pickedCar.id,'参考型式':katashiki.value.trim()||null}).select();
   if(error){show('pMsg','ng','エラー：'+error.message);return}
   const code=data[0].商品コード;
   show('pMsg','ok','登録しました → 商品コード：'+code);
+  await showPreview(code);
+  katashiki.value='';refreshP();
+}
+async function showPreview(code){
   const {data:pv1}=await sb.from('ne_export').select('syohin_name,genka_tnk,baika_tnk,category_code_yauc,keyword,tenpo_kihon_category1').eq('syohin_code',code);
   if(pv1&&pv1[0]){const p=pv1[0];
     pv.innerHTML=`<div><b>NE出力プレビュー</b></div><div>商品名：${p.syohin_name}</div><div>原価：${p.genka_tnk??'-'}円 → 売価：${p.baika_tnk??'-'}円</div><div>ヤフオクカテゴリ：${p.category_code_yauc??'未設定'}</div><div>店舗カテゴリ：${p.tenpo_kihon_category1??''}</div><div>キーワード：${p.keyword??''}</div>`;
     pv.style.display='block'}
-  katashiki.value='';refreshP();
+}
+async function delP(code){
+  if(!confirm(code+' を削除しますか？')) return;
+  const {error}=await sb.from('products').delete().eq('商品コード',code);
+  if(error){show('pMsg','ng','エラー：'+error.message);return}
+  show('pMsg','ok',code+' を削除しました'); refreshP();
 }
 async function refreshP(){
-  const {data}=await sb.from('products').select('商品コード,参考型式,car_models(maker,model_name)').order('created_at',{ascending:false}).limit(10);
-  pList.innerHTML='<tr><th>商品コード</th><th>車名</th><th>型式</th></tr>'+
-   (data||[]).map(p=>`<tr><td>${p.商品コード}</td><td>${p.car_models?p.car_models.maker+' '+p.car_models.model_name:''}</td><td>${p.参考型式||''}</td></tr>`).join('');
+  const q=pFilter.value.trim();
+  let query=sb.from('products').select('商品コード,Vコード,車種_id,参考型式,car_models(maker,model_name)');
+  if(q) query=query.or(`商品コード.ilike.%${q}%,参考型式.ilike.%${q}%`);
+  const {data}=await query.order('created_at',{ascending:false}).limit(10);
+  pList.innerHTML='<tr><th>商品コード</th><th>車名</th><th>型式</th><th>操作</th></tr>'+
+   (data||[]).map(p=>{pRows[p.商品コード]=p;return `<tr><td>${p.商品コード}</td><td>${p.car_models?p.car_models.maker+' '+p.car_models.model_name:''}</td><td>${p.参考型式||''}</td><td><button class="mini ghost" onclick="startEditP('${p.商品コード}')">編集</button><button class="mini danger" onclick="delP('${p.商品コード}')">削除</button></td></tr>`}).join('');
 }
+pFilter.addEventListener('input',()=>refreshP());
 sb.auth.getSession().then(({data})=>{if(data.session)init(data.session.user)});
 </script></body></html>
