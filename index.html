@@ -63,6 +63,8 @@ td{padding:6px 9px;border:1px solid #dfe4ea;background:#fff}
       <div><label>純正品番（エンジン・ミッションは型式＋仕様）</label><input id="pn" placeholder="例）23100-28300 ／ 1NZ-FE 2型"></div>
       <div><label>仕入価格（円・税抜整数）</label><input id="cost" type="number" min="0"></div>
     </div>
+    <label>補助品番（任意｜メーカー品番・クラッチ品番・旧品番など スペース区切り）</label>
+    <input id="hojo" placeholder="例）447220-XXXX 88410-YYYY">
     <button id="vSaveBtn" onclick="saveV()">登録する</button>
     <div class="msg" id="vMsg"></div>
     <div class="listhead"><b>登録済み一覧</b><input id="vFilter" placeholder="Vコード・純正品番で検索"></div>
@@ -108,37 +110,38 @@ async function init(user){
 /* ===== バリエーション ===== */
 async function refreshV(){
   const q=vFilter.value.trim();
-  let query=sb.from('variations').select('Vコード,部品コード,純正品番,仕入価格,parts_master(部品名)');
-  if(q) query=query.or(`Vコード.ilike.%${q}%,純正品番.ilike.%${q}%`);
+  let query=sb.from('variations').select('Vコード,部品コード,純正品番,補助品番,仕入価格,parts_master(部品名)');
+  if(q) query=query.or(`Vコード.ilike.%${q}%,純正品番.ilike.%${q}%,補助品番.ilike.%${q}%`);
   const {data}=await query.order('created_at',{ascending:false}).limit(10);
-  vList.innerHTML='<tr><th>Vコード</th><th>部品</th><th>純正品番</th><th>仕入価格</th><th>操作</th></tr>'+
-   (data||[]).map(v=>{vRows[v.Vコード]=v;return `<tr><td>${v.Vコード}</td><td>${v.parts_master?.部品名||v.部品コード}</td><td>${v.純正品番}</td><td>${v.仕入価格!=null?v.仕入価格.toLocaleString():''}</td><td><button class="mini ghost" onclick="startEditV('${v.Vコード}')">編集</button><button class="mini danger" onclick="delV('${v.Vコード}')">削除</button></td></tr>`}).join('');
+  vList.innerHTML='<tr><th>Vコード</th><th>部品</th><th>純正品番</th><th>補助品番</th><th>仕入価格</th><th>操作</th></tr>'+
+   (data||[]).map(v=>{vRows[v.Vコード]=v;return `<tr><td>${v.Vコード}</td><td>${v.parts_master?.部品名||v.部品コード}</td><td>${v.純正品番}</td><td>${v.補助品番||''}</td><td>${v.仕入価格!=null?v.仕入価格.toLocaleString():''}</td><td><button class="mini ghost" onclick="startEditV('${v.Vコード}')">編集</button><button class="mini danger" onclick="delV('${v.Vコード}')">削除</button></td></tr>`}).join('');
 }
 function startEditV(code){
   const v=vRows[code]; editV=code;
   partSel.value=v.部品コード; partSel.disabled=true;
-  pn.value=v.純正品番; cost.value=v.仕入価格??'';
+  pn.value=v.純正品番; cost.value=v.仕入価格??''; hojo.value=v.補助品番??'';
   vEditCode.textContent=code; vEditBar.style.display='block'; vSaveBtn.textContent='更新する';
   window.scrollTo({top:0,behavior:'smooth'});
 }
-function cancelEditV(){editV=null;partSel.disabled=false;pn.value='';cost.value='';vEditBar.style.display='none';vSaveBtn.textContent='登録する'}
+function cancelEditV(){editV=null;partSel.disabled=false;pn.value='';cost.value='';hojo.value='';vEditBar.style.display='none';vSaveBtn.textContent='登録する'}
 async function saveV(){
   if(!pn.value.trim()){show('vMsg','ng','純正品番を入力してください');return}
   if(editV){
-    const upd={'純正品番':pn.value.trim(),'仕入価格':cost.value?parseInt(cost.value):null};
+    const upd={'純正品番':pn.value.trim(),'仕入価格':cost.value?parseInt(cost.value):null,'補助品番':hojo.value.trim()||null};
     const {error}=await sb.from('variations').update(upd).eq('Vコード',editV);
     if(error){show('vMsg','ng','エラー：'+error.message);return}
     show('vMsg','ok','更新しました：'+editV); cancelEditV(); refreshV(); return;
   }
   const row={'部品コード':partSel.value,'純正品番':pn.value.trim()};
   if(cost.value) row['仕入価格']=parseInt(cost.value);
+  if(hojo.value.trim()) row['補助品番']=hojo.value.trim();
   const {data,error}=await sb.from('variations').insert(row).select();
   if(error){
     if(String(error.message).includes('duplicate')){show('vMsg','ng','この部品×純正品番は登録済みです')}
     else show('vMsg','ng','エラー：'+error.message);
     return}
   show('vMsg','ok','登録しました → Vコード：'+data[0].Vコード);
-  pn.value='';cost.value='';refreshV();
+  pn.value='';cost.value='';hojo.value='';refreshV();
 }
 async function delV(code){
   if(!confirm(code+' を削除しますか？')) return;
@@ -155,7 +158,7 @@ vFilter.addEventListener('input',()=>refreshV());
 vSearch.addEventListener('input',async e=>{
   const q=e.target.value.trim(); if(q.length<2){vSug.style.display='none';return}
   const {data}=await sb.from('variations').select('Vコード,部品コード,純正品番,parts_master(部品名)')
-    .or(`純正品番.ilike.%${q}%,部品コード.ilike.%${q}%,Vコード.ilike.%${q}%`).limit(8);
+    .or(`純正品番.ilike.%${q}%,補助品番.ilike.%${q}%,部品コード.ilike.%${q}%,Vコード.ilike.%${q}%`).limit(8);
   let list=data||[];
   if(!list.length){
     const {data:d2}=await sb.from('variations').select('Vコード,部品コード,純正品番,parts_master!inner(部品名)').ilike('parts_master.部品名',`%${q}%`).limit(8);
